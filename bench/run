@@ -9,5 +9,5 @@ erl -sname ${NODE} \
     +A 0 \
     -pz ../ebin \
     -pa ./ \
-    -s lager_bench \
-    -s erlang halt
+    -s lager_bench start 3 \
+    -s lager_bench stop

@@ -1,12 +1,26 @@
 -module(lager_bench).
 
--export([start/0]).
+-export([start/0, start/1, stop/0]).
+
+stop() ->
+    timer:sleep(1000),
+    erlang:halt(0).
 
 start() ->
-    io:format("% Starting benchmarks...~n"),
-    Result = filelib:fold_files(".", "^bench_.*\.erl$", false,
-                                fun perform/2, []),
-    io:format("% Result is: ~p~n", [Result]),
+    start(1).
+
+start([Repeats]) when is_atom(Repeats) ->
+    start(list_to_integer(atom_to_list(Repeats)));
+start(Repeats) ->
+    io:format("% Starting benchmarks... with ~p repeats~n", [Repeats]),
+    Tests0 = filelib:fold_files(".", "^bench_.*\.erl$", false,
+                                fun (E,Acc) -> [E|Acc] end, []),
+    Tests = lists:flatmap(fun (A) -> A end,
+                          lists:duplicate(Repeats, Tests0)),
+    LongResult = lists:foldl(fun perform/2, [], Tests),
+    io:format("%%% Long result is: ~p~n", [LongResult]),
+    Result = aggregate_result(LongResult),
+    io:format("% Aggregated result is: ~p~n", [Result]),
     ok.
 
 perform(Filename, Acc) ->
@@ -20,6 +34,7 @@ perform(Filename) when is_list(Filename) ->
     perform(compile:file(Mod));
 perform({ok, Mod}) ->
     io:format("%%% Loading ~p~n", [Mod]),
+    _ = code:purge(Mod),
     perform(code:load_file(Mod));
 perform({module, Mod}) ->
     io:format("%% Initializing ~p~n", [Mod]),
@@ -33,3 +48,44 @@ perform({module, Mod}) ->
 perform(Other) ->
     io:format("% ~p", [Other]),
     Other.
+
+aggregate_result(LR) ->
+    io:format("%%% Aggregating results...~n"),
+    Keys = proplists:get_keys(LR),
+    lists:map(fun (Key) ->
+                      AllValues = proplists:get_all_values(Key, LR),
+                      {Positives, _Negatives} =
+                          lists:foldl(fun ({T, ok}, {PosAcc, NegAcc}) -> {[T|PosAcc], NegAcc};
+                                          (Smth, {PosAcc, NegAcc}) -> {PosAcc, [Smth|NegAcc]}
+                                      end,
+                                      {[],[]},
+                                      AllValues),
+                      Sum = lists:sum(Positives),
+                      Ratio = length(Positives) / length(AllValues),
+                      Avg = Sum / length(Positives),
+                      Min = lists:min(Positives),
+                      Max = lists:max(Positives),
+                      {Key, [{ratio, Ratio}, {avg, norm(Avg)}, {min, norm(Min)}, {max, norm(Max)}]}
+              end,
+              Keys).
+
+norm(T) when is_number(T) ->
+    %%norm(T, us).
+    {seconds, T / 1000}.
+
+norm(T, us) when is_integer(T) and 0 =:= T rem 1000->
+    norm(T div 1000, ms);
+norm(T, us) when is_integer(T) ->
+    norm(T / 1000, ms);
+norm(T, us) when is_float(T) andalso T == ((round(T) div 1000) * 1000) ->
+    norm(round(T), us);
+norm(T, us) ->
+    {us, T};
+norm(T, ms) when is_integer(T) and 0 =:= T rem 1000 ->
+    norm(T div 1000, s);
+norm(T, ms) when is_integer(T) ->
+    norm(T / 1000, s);
+norm(T, ms) ->
+    {ms, T};
+norm(T, s) ->
+    {seconds, T}.
