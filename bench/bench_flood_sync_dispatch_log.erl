@@ -23,6 +23,7 @@ init() ->
 terminate(_) ->
 %%    file:delete("test.log"),
     application:stop(lager),
+    erlang:put(sync_dispatch_log, undefined),
     error_logger:tty(true),
     ok.
 
