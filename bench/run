@@ -1,0 +1,13 @@
+#!/bin/bash -v
+
+NODE='lager-bench@localhost'
+
+erlc lager_bench.erl
+
+erl -sname ${NODE} \
+    -noshell \
+    +A 0 \
+    -pz ../ebin \
+    -pa ./ \
+    -s lager_bench \
+    -s erlang halt
